@@ -32,7 +32,7 @@ export function parsePathPattern(source: string): PathPattern {
 	const names = new Set<string>();
 	let index = 0;
 
-	// Reads one "/segment" starting at the slash; stops before "/", "{", "}" or the end.
+	// Reads one "/segment" starting at the slash; stops before "/", "{", "}" or the end
 	const readSegment = (inGroup: boolean): { segment: Segment; optional: boolean } => {
 		const slash = index;
 		const start = slash + 1;

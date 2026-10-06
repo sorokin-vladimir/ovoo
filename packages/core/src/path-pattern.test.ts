@@ -62,7 +62,7 @@ describe('parsePathPattern', () => {
 });
 
 // Not every supported runtime ships URLPattern (Node 22 does not), and the core lib
-// has no DOM types, so describe the slice of its API this test needs.
+// has no DOM types, so describe the slice of its API this test needs
 type URLPatternConstructor = new (init: { pathname: string }) => {
 	test(init: { pathname: string }): boolean;
 };

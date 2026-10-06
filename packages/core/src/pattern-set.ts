@@ -1,21 +1,28 @@
 import { type Segment, parsePathPattern } from './path-pattern.ts';
+import type { StandardSchemaV1 } from './standard-schema.ts';
+
+export type ParamConstraints = Readonly<Record<string, StandardSchemaV1>>;
+
+export type PatternEntry =
+	string | { readonly pattern: string; readonly params?: ParamConstraints };
 
 export interface PatternMatch {
 	readonly pattern: string;
-	readonly params: Readonly<Record<string, string>>;
+	readonly params: Readonly<Record<string, unknown>>;
 }
 
 export interface PatternSet {
 	match(path: string): PatternMatch | undefined;
 }
 
-// One concrete shape of a pattern: every optional group either taken or omitted.
+// One concrete shape of a pattern: every optional group either taken or omitted
 interface Variant {
 	readonly source: string;
-	// Position of the source in the list, so identical sources still count as two patterns.
+	// Position of the source in the list, so identical sources still count as two patterns
 	readonly index: number;
+	readonly constraints: ParamConstraints;
 	readonly segments: readonly VariantSegment[];
-	// Number of optional groups left out of this variant.
+	// Number of optional groups left out of this variant
 	readonly omitted: number;
 }
 
@@ -31,8 +38,8 @@ export class PathPatternConflictError extends Error {
 	}
 }
 
-export function createPatternSet(sources: readonly string[]): PatternSet {
-	const variants = sources.flatMap(expand).toSorted(bySpecificity);
+export function createPatternSet(entries: readonly PatternEntry[]): PatternSet {
+	const variants = entries.flatMap(expand).toSorted(bySpecificity);
 	assertNoConflicts(variants);
 	return {
 		match(path) {
@@ -46,9 +53,26 @@ export function createPatternSet(sources: readonly string[]): PatternSet {
 	};
 }
 
-function expand(source: string, index: number): Variant[] {
-	let variants: Variant[] = [{ source, index, segments: [], omitted: 0 }];
-	for (const part of parsePathPattern(source).parts) {
+function expand(entry: PatternEntry, index: number): Variant[] {
+	const { pattern: source, params: constraints = {} } =
+		typeof entry === 'string' ? { pattern: entry } : entry;
+	const { parts } = parsePathPattern(source);
+	const names = new Set(
+		parts
+			.flatMap((part) => (part.kind === 'optional' ? part.segments : [part]))
+			.flatMap((segment) => {
+				if (segment.kind === 'param') return [segment.name];
+				return segment.kind === 'wildcard' ? ['*'] : [];
+			}),
+	);
+	for (const name of Object.keys(constraints)) {
+		if (!names.has(name)) {
+			throw new Error(`Param constraint "${name}" has no matching path param in "${source}"`);
+		}
+	}
+
+	let variants: Variant[] = [{ source, index, constraints, segments: [], omitted: 0 }];
+	for (const part of parts) {
 		if (part.kind === 'optional') {
 			const taken = part.segments.map((segment) => ({ ...segment, optional: true }));
 			variants = variants.flatMap((variant) => [
@@ -68,12 +92,12 @@ function expand(source: string, index: number): Variant[] {
 
 const kindRank = { static: 3, param: 2, wildcard: 1 } as const;
 
-// Kind decides first; between equal kinds a required segment beats an optional one.
+// Kind decides first; between equal kinds a required segment beats an optional one
 function rank(segment: VariantSegment): number {
 	return kindRank[segment.kind] * 2 + (segment.optional ? 0 : 1);
 }
 
-// Most specific first: the first segment that differs in rank decides.
+// Most specific first: the first segment that differs in rank decides
 function bySpecificity(a: Variant, b: Variant): number {
 	const length = Math.min(a.segments.length, b.segments.length);
 	for (let i = 0; i < length; i++) {
@@ -85,12 +109,12 @@ function bySpecificity(a: Variant, b: Variant): number {
 		}
 	}
 	// Variants of different lengths never match the same URL (a wildcard always differs in
-	// rank first), so any fixed rule works here; it keeps the comparator transitive.
+	// rank first), so any fixed rule works here; it keeps the comparator transitive
 	if (a.segments.length !== b.segments.length) return b.segments.length - a.segments.length;
 	return a.omitted - b.omitted;
 }
 
-// Variants with the same key rank equally and accept exactly the same URLs.
+// Variants with the same key rank equally and accept exactly the same URLs
 function conflictKey(variant: Variant): string {
 	const segments = variant.segments.map(
 		(segment) => `${rank(segment)}${segment.kind === 'static' ? `:${segment.value}` : ''}`,
@@ -127,7 +151,7 @@ function conflictMessage(first: Variant, second: Variant): string {
 function matchVariant(
 	variant: Variant,
 	segments: readonly string[],
-): Record<string, string> | undefined {
+): Record<string, unknown> | undefined {
 	const wildcard = variant.segments.at(-1)?.kind === 'wildcard';
 	if (
 		wildcard
@@ -136,7 +160,7 @@ function matchVariant(
 	) {
 		return undefined;
 	}
-	const params: Record<string, string> = {};
+	const params: Record<string, unknown> = {};
 	for (const [i, part] of variant.segments.entries()) {
 		if (part.kind === 'wildcard') {
 			params['*'] = segments.slice(i).join('/');
@@ -145,6 +169,17 @@ function matchVariant(
 		const segment = segments[i] ?? '';
 		if (part.kind === 'static' && part.value !== segment) return undefined;
 		if (part.kind === 'param') params[part.name] = segment;
+	}
+	for (const [name, constraint] of Object.entries(variant.constraints)) {
+		if (!(name in params)) continue;
+		const result = constraint['~standard'].validate(params[name]);
+		if (result instanceof Promise) {
+			throw new TypeError(
+				`Param constraint for "${name}" in "${variant.source}" returned a Promise; constraints must be synchronous`,
+			);
+		}
+		if (result.issues) return undefined;
+		params[name] = result.value;
 	}
 	return params;
 }

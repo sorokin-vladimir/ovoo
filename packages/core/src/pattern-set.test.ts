@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { PathPatternConflictError, createPatternSet } from './pattern-set.ts';
+import type { StandardSchemaV1 } from './standard-schema.ts';
 
 describe('match', () => {
 	test('returns the matching pattern with its path params', () => {
@@ -33,7 +34,7 @@ describe('match', () => {
 	});
 });
 
-// Each case lists patterns that all match the URL; the winner must not depend on order.
+// Each case lists patterns that all match the URL; the winner must not depend on order
 describe('the most specific pattern wins', () => {
 	test.each([
 		['/users/me', ['/users/:id', '/users/me'], '/users/me'],
@@ -80,6 +81,69 @@ describe('conflicts', () => {
 		},
 	);
 });
+
+describe('param constraints', () => {
+	test('a passing constraint replaces the raw value with its output', () => {
+		const set = createPatternSet([{ pattern: '/users/:id', params: { id: upperCase } }]);
+		expect(set.match('/users/ab')?.params).toEqual({ id: 'AB' });
+	});
+
+	test('a failing constraint moves on to the next most specific pattern', () => {
+		const set = createPatternSet([
+			{ pattern: '/users/:name', params: { name: upperCase } },
+			'/users/*',
+		]);
+		expect(set.match('/users/42')).toEqual({ pattern: '/users/*', params: { '*': '42' } });
+		expect(
+			createPatternSet([{ pattern: '/users/:name', params: { name: upperCase } }]).match(
+				'/users/42',
+			),
+		).toBeUndefined();
+	});
+
+	test('an omitted optional param is not checked', () => {
+		const set = createPatternSet([{ pattern: '/books/:id?', params: { id: upperCase } }]);
+		expect(set.match('/books')?.params).toEqual({});
+		expect(set.match('/books/ab')?.params).toEqual({ id: 'AB' });
+	});
+
+	test('an async constraint is an error, since matching is synchronous', () => {
+		const async: StandardSchemaV1 = {
+			'~standard': { version: 1, vendor: 'test', validate: async (value) => ({ value }) },
+		};
+		const set = createPatternSet([{ pattern: '/users/:id', params: { id: async } }]);
+		expect(() => set.match('/users/1')).toThrow(
+			'Param constraint for "id" in "/users/:id" returned a Promise',
+		);
+	});
+
+	test('a constraint for a param the pattern does not have is rejected', () => {
+		expect(() =>
+			createPatternSet([{ pattern: '/users/:id', params: { userId: upperCase } }]),
+		).toThrow('Param constraint "userId" has no matching path param in "/users/:id"');
+		expect(() =>
+			createPatternSet([{ pattern: '/users/:id', params: { '*': upperCase } }]),
+		).toThrow('Param constraint "*" has no matching path param in "/users/:id"');
+	});
+
+	test('a wildcard can be constrained', () => {
+		const set = createPatternSet([{ pattern: '/tags/*', params: { '*': upperCase } }]);
+		expect(set.match('/tags/news')?.params).toEqual({ '*': 'NEWS' });
+		expect(set.match('/tags/a/b')).toBeUndefined();
+	});
+});
+
+// Minimal Standard Schema: accepts lowercase words and outputs them in upper case
+const upperCase: StandardSchemaV1<string, string> = {
+	'~standard': {
+		version: 1,
+		vendor: 'test',
+		validate: (value) =>
+			typeof value === 'string' && /^[a-z]+$/.test(value)
+				? { value: value.toUpperCase() }
+				: { issues: [{ message: 'not a lowercase word' }] },
+	},
+};
 
 function conflictError(sources: readonly string[]): PathPatternConflictError {
 	try {
