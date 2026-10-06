@@ -1,0 +1,32 @@
+{
+	"name": "@ovoo/react",
+	"version": "0.0.0",
+	"description": "React adapter for the ovoo router, with SSR support.",
+	"license": "MIT",
+	"author": "Vladimir Sorokin",
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": "./dist/index.js",
+		"./package.json": "./package.json"
+	},
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"typecheck": "tsc -p ."
+	},
+	"dependencies": {
+		"@ovoo/core": "workspace:*",
+		"@ovoo/navigation": "workspace:*"
+	},
+	"peerDependencies": {
+		"react": "^19.0.0"
+	},
+	"devDependencies": {
+		"@types/react": "catalog:",
+		"react": "catalog:"
+	}
+}

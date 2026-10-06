@@ -1,0 +1,24 @@
+{
+	"name": "@ovoo/navigation",
+	"version": "0.0.0",
+	"description": "Browser navigation layer for @ovoo/core, built on the Navigation API.",
+	"license": "MIT",
+	"author": "Vladimir Sorokin",
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": "./dist/index.js",
+		"./package.json": "./package.json"
+	},
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"typecheck": "tsc -p ."
+	},
+	"dependencies": {
+		"@ovoo/core": "workspace:*"
+	}
+}

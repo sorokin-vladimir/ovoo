@@ -1,0 +1,21 @@
+{
+	"name": "@ovoo/core",
+	"version": "0.0.0",
+	"description": "Type-safe isomorphic router core: match a URL against a route tree and resolve it.",
+	"license": "MIT",
+	"author": "Vladimir Sorokin",
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": "./dist/index.js",
+		"./package.json": "./package.json"
+	},
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"typecheck": "tsc -p ."
+	}
+}
