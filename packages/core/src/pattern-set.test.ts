@@ -17,10 +17,10 @@ describe('match', () => {
 		expect(set.match('/users')).toBeUndefined();
 	});
 
-	test('wildcard captures the rest of the path, slashes included', () => {
+	test('wildcard captures the non-empty rest of the path, slashes included', () => {
 		const set = createPatternSet(['/files/*']);
 		expect(set.match('/files/a/b.txt')?.params).toEqual({ '*': 'a/b.txt' });
-		expect(set.match('/files/')?.params).toEqual({ '*': '' });
+		expect(set.match('/files/')).toBeUndefined();
 		expect(set.match('/files')).toBeUndefined();
 	});
 
@@ -31,6 +31,99 @@ describe('match', () => {
 		expect(set.match('/docs/v/2')?.params).toEqual({ version: '2' });
 		expect(set.match('/en/docs/v/2')?.params).toEqual({ lang: 'en', version: '2' });
 		expect(set.match('/docs/v')).toBeUndefined();
+	});
+});
+
+describe('decoding', () => {
+	test('path params are percent-decoded once', () => {
+		const set = createPatternSet(['/users/:name']);
+		expect(set.match('/users/caf%C3%A9')?.params).toEqual({ name: 'café' });
+		expect(set.match('/users/100%2525')?.params).toEqual({ name: '100%25' });
+	});
+
+	test.each(['/users/%', '/users/%E0%A4%A', '/users/%ED%A0%80'])(
+		'malformed encoding %j is not found instead of throwing',
+		(path) => {
+			expect(createPatternSet(['/users/:name']).match(path)).toBeUndefined();
+		},
+	);
+});
+
+describe('canonical URL', () => {
+	test('by default a trailing slash redirects to the path without it', () => {
+		const set = createPatternSet(['/users/:id', '/']);
+		expect(set.match('/users/42/')).toEqual({
+			pattern: '/users/:id',
+			params: { id: '42' },
+			redirect: '/users/42',
+		});
+		expect(set.match('/users/42')).toEqual({ pattern: '/users/:id', params: { id: '42' } });
+		expect(set.match('/')).toEqual({ pattern: '/', params: {} });
+		expect(set.match('/nope/')).toBeUndefined();
+	});
+
+	test('trailingSlash "always" redirects to the path with it', () => {
+		const set = createPatternSet(['/users/:id', '/files/*', '/'], { trailingSlash: 'always' });
+		expect(set.match('/users/42')?.redirect).toBe('/users/42/');
+		expect(set.match('/users/42/')).toEqual({ pattern: '/users/:id', params: { id: '42' } });
+		expect(set.match('/files/a/b/')?.params).toEqual({ '*': 'a/b' });
+		expect(set.match('/')?.redirect).toBeUndefined();
+	});
+
+	test('trailingSlash "ignore" accepts both forms, still normalizing the rest', () => {
+		const set = createPatternSet(['/users/:id'], { trailingSlash: 'ignore' });
+		expect(set.match('/users/42')).toEqual({ pattern: '/users/:id', params: { id: '42' } });
+		expect(set.match('/users/42/')).toEqual({ pattern: '/users/:id', params: { id: '42' } });
+		expect(set.match('/%75sers/42/')?.redirect).toBe('/users/42/');
+	});
+
+	test('static segments are case-sensitive by default', () => {
+		expect(createPatternSet(['/users/:id']).match('/Users/Ann')).toBeUndefined();
+	});
+
+	test('caseSensitive: false redirects to the pattern spelling, keeping params as written', () => {
+		const set = createPatternSet(['/users/:id'], { caseSensitive: false });
+		expect(set.match('/USERS/Ann')).toEqual({
+			pattern: '/users/:id',
+			params: { id: 'Ann' },
+			redirect: '/users/Ann',
+		});
+	});
+
+	test('with caseSensitive: false, patterns differing only in case conflict', () => {
+		expect(() => createPatternSet(['/About', '/about'])).not.toThrow();
+		expect(() => createPatternSet(['/About', '/about'], { caseSensitive: false })).toThrow(
+			PathPatternConflictError,
+		);
+	});
+
+	// Paths a browser produces on its own are already canonical
+	test.each([
+		'/users/a:b',
+		"/users/a@b!$&'()*+,;=~_.-",
+		'/users/a%20b',
+		'/users/caf%C3%A9',
+		'/users/a%2Fb',
+		'/users/100%25',
+		'/users/a%3Fb%23c',
+		'/users/[a]|b',
+		'/users/%2E%2E',
+	])('%j needs no redirect', (path) => {
+		expect(createPatternSet(['/users/:id']).match(path)?.redirect).toBeUndefined();
+	});
+
+	test.each([
+		['/%75sers/42', '/users/42'],
+		['/users/caf%c3%a9', '/users/caf%C3%A9'],
+		['/users/café', '/users/caf%C3%A9'],
+		['/users/a b', '/users/a%20b'],
+		['/users/%3A', '/users/:'],
+	])('%j redirects to %j', (path, redirect) => {
+		expect(createPatternSet(['/users/:id']).match(path)?.redirect).toBe(redirect);
+	});
+
+	test.each(['/a//b', '/files/a//b', '/a/b//'])('empty segments in %j match nothing', (path) => {
+		expect(createPatternSet(['/a/:x/:y', '/files/*']).match(path)).toBeUndefined();
 	});
 });
 
@@ -99,6 +192,11 @@ describe('param constraints', () => {
 				'/users/42',
 			),
 		).toBeUndefined();
+	});
+
+	test('a constraint sees the decoded value', () => {
+		const set = createPatternSet([{ pattern: '/tags/:tag', params: { tag: upperCase } }]);
+		expect(set.match('/tags/%61b')?.params).toEqual({ tag: 'AB' });
 	});
 
 	test('an omitted optional param is not checked', () => {

@@ -9,6 +9,15 @@ export type PatternEntry =
 export interface PatternMatch {
 	readonly pattern: string;
 	readonly params: Readonly<Record<string, unknown>>;
+	// Set when the requested path is not canonical; pattern and params describe this URL
+	readonly redirect?: string;
+}
+
+export interface PatternSetOptions {
+	// Whether canonical URLs end with a slash; "ignore" accepts both forms without a redirect
+	readonly trailingSlash?: 'never' | 'always' | 'ignore';
+	// When false, static segments match in any letter case and redirect to the pattern spelling
+	readonly caseSensitive?: boolean;
 }
 
 export interface PatternSet {
@@ -38,19 +47,44 @@ export class PathPatternConflictError extends Error {
 	}
 }
 
-export function createPatternSet(entries: readonly PatternEntry[]): PatternSet {
+export function createPatternSet(
+	entries: readonly PatternEntry[],
+	{ trailingSlash: policy = 'never', caseSensitive = true }: PatternSetOptions = {},
+): PatternSet {
 	const variants = entries.flatMap(expand).toSorted(bySpecificity);
-	assertNoConflicts(variants);
+	assertNoConflicts(variants, caseSensitive);
 	return {
 		match(path) {
-			const segments = path === '/' ? [] : path.split('/').slice(1);
+			const trailingSlash = path.length > 1 && path.endsWith('/');
+			const segments = decodeSegments(trailingSlash ? path.slice(0, -1) : path);
+			if (!segments) return undefined;
 			for (const variant of variants) {
-				const params = matchVariant(variant, segments);
-				if (params) return { pattern: variant.source, params };
+				const params = matchVariant(variant, segments, caseSensitive);
+				if (!params) continue;
+				const base = canonicalPath(variant, segments);
+				const withSlash = policy === 'always' || (policy === 'ignore' && trailingSlash);
+				const canonical = withSlash && base !== '/' ? `${base}/` : base;
+				return canonical === path
+					? { pattern: variant.source, params }
+					: { pattern: variant.source, params, redirect: canonical };
 			}
 			return undefined;
 		},
 	};
+}
+
+// Splits before decoding, so an encoded "/" stays inside its segment
+function decodeSegments(path: string): string[] | undefined {
+	if (path === '/') return [];
+	const raw = path.split('/').slice(1);
+	// An empty segment ("//") is never part of a canonical URL
+	if (raw.includes('')) return undefined;
+	try {
+		return raw.map(decodeURIComponent);
+	} catch {
+		// Malformed percent-encoding: no route can serve this URL
+		return undefined;
+	}
 }
 
 function expand(entry: PatternEntry, index: number): Variant[] {
@@ -115,17 +149,18 @@ function bySpecificity(a: Variant, b: Variant): number {
 }
 
 // Variants with the same key rank equally and accept exactly the same URLs
-function conflictKey(variant: Variant): string {
-	const segments = variant.segments.map(
-		(segment) => `${rank(segment)}${segment.kind === 'static' ? `:${segment.value}` : ''}`,
-	);
+function conflictKey(variant: Variant, caseSensitive: boolean): string {
+	const segments = variant.segments.map((segment) => {
+		if (segment.kind !== 'static') return `${rank(segment)}`;
+		return `${rank(segment)}:${caseSensitive ? segment.value : segment.value.toLowerCase()}`;
+	});
 	return `${segments.join('/')}|${variant.omitted}`;
 }
 
-function assertNoConflicts(variants: readonly Variant[]): void {
+function assertNoConflicts(variants: readonly Variant[], caseSensitive: boolean): void {
 	const seen = new Map<string, Variant>();
 	for (const variant of variants) {
-		const key = conflictKey(variant);
+		const key = conflictKey(variant, caseSensitive);
 		const other = seen.get(key);
 		if (other !== undefined) {
 			throw new PathPatternConflictError(
@@ -148,9 +183,38 @@ function conflictMessage(first: Variant, second: Variant): string {
 	return `Path patterns "${first.source}" and "${second.source}" are equally specific and match the same URLs`;
 }
 
+// Rebuilds the path a matched variant stands for: static text as the pattern spells it,
+// every segment encoded the same way
+function canonicalPath(variant: Variant, segments: readonly string[]): string {
+	const canonical = segments.map((segment, i) => {
+		const part = variant.segments[i];
+		return part?.kind === 'static' ? part.value : segment;
+	});
+	return `/${canonical.map(encodeSegment).join('/')}`;
+}
+
+// Characters the WHATWG URL parser leaves as is in a path; everything else is encoded
+const unencoded = /^[\w!$&'()*+,\-.:;=@[\]|~]$/;
+
+// Encodes only what a browser would encode, plus "%" and "/" that would change the meaning
+function encodeSegment(segment: string): string {
+	// Dot segments would be collapsed by the URL parser
+	if (segment === '.' || segment === '..') return segment.replaceAll('.', '%2E');
+	let encoded = '';
+	for (const char of segment) {
+		encoded += unencoded.test(char) ? char : encodeURIComponent(char);
+	}
+	return encoded;
+}
+
+function sameText(a: string, b: string, caseSensitive: boolean): boolean {
+	return caseSensitive ? a === b : a.toLowerCase() === b.toLowerCase();
+}
+
 function matchVariant(
 	variant: Variant,
 	segments: readonly string[],
+	caseSensitive: boolean,
 ): Record<string, unknown> | undefined {
 	const wildcard = variant.segments.at(-1)?.kind === 'wildcard';
 	if (
@@ -167,7 +231,8 @@ function matchVariant(
 			break;
 		}
 		const segment = segments[i] ?? '';
-		if (part.kind === 'static' && part.value !== segment) return undefined;
+		if (part.kind === 'static' && !sameText(part.value, segment, caseSensitive))
+			return undefined;
 		if (part.kind === 'param') params[part.name] = segment;
 	}
 	for (const [name, constraint] of Object.entries(variant.constraints)) {
