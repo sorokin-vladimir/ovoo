@@ -8,23 +8,33 @@
 	},
 	"scripts": {
 		"build": "pnpm -r build",
-		"test": "vitest run",
-		"test:watch": "vitest",
+		"test": "vitest run --project unit --project 'types:*'",
+		"test:watch": "vitest --project unit --project 'types:*'",
+		"test:browser": "vitest run --project 'browser*'",
+		"test:types": "vitest run --project 'types:*'",
+		"size": "size-limit",
 		"typecheck": "tsc -p . && pnpm -r typecheck",
 		"lint": "oxlint --type-aware",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
-		"check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+		"check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm size"
 	},
 	"devDependencies": {
 		"@arethetypeswrong/core": "catalog:",
+		"@size-limit/preset-small-lib": "catalog:",
 		"@types/node": "catalog:",
+		"@vitest/browser-playwright": "catalog:",
 		"oxlint": "catalog:",
 		"oxlint-tsgolint": "catalog:",
+		"playwright": "catalog:",
 		"prettier": "catalog:",
 		"publint": "catalog:",
+		"size-limit": "catalog:",
 		"tsdown": "catalog:",
 		"typescript": "catalog:",
+		"typescript-5.6": "catalog:",
+		"typescript-5.9": "catalog:",
+		"typescript-6.0": "catalog:",
 		"vitest": "catalog:"
 	}
 }

@@ -1,0 +1,4 @@
+{
+	"extends": "../../tsconfig.consumer.json",
+	"include": ["src/**/*.test-d.ts", "src/**/*.test-d.tsx"]
+}

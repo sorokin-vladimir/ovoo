@@ -1,0 +1,23 @@
+name: Setup
+description: Install pnpm, Node and workspace dependencies.
+
+inputs:
+    node-version:
+        description: Node version; defaults to the one in .nvmrc.
+        required: false
+        default: ''
+
+runs:
+    using: composite
+    steps:
+        - uses: pnpm/action-setup@v6
+
+        - uses: actions/setup-node@v7
+          with:
+              node-version: ${{ inputs.node-version }}
+              # Ignored by setup-node when node-version is set.
+              node-version-file: .nvmrc
+              cache: pnpm
+
+        - shell: bash
+          run: pnpm install --frozen-lockfile

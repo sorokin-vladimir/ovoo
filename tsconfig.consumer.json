@@ -1,0 +1,15 @@
+{
+	// A typical user's project: resolves @ovoo/* through package exports to the built
+	// dist, and checks our .d.ts files instead of skipping them.
+	"compilerOptions": {
+		"target": "es2022",
+		"lib": ["es2023", "dom", "dom.iterable"],
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"jsx": "react-jsx",
+		"strict": true,
+		"noEmit": true,
+		"skipLibCheck": false,
+		"types": []
+	}
+}

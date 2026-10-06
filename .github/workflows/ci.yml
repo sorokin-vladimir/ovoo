@@ -1,0 +1,88 @@
+name: CI
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+
+concurrency:
+    group: ci-${{ github.ref }}
+    cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+    contents: read
+
+jobs:
+    check:
+        name: Lint, build, size
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
+            - uses: ./.github/actions/setup
+            - run: pnpm format:check
+            - run: pnpm lint
+            - run: pnpm typecheck
+            - run: pnpm build
+            - run: pnpm size
+
+    node:
+        name: Node ${{ matrix.node }}
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                node: [22, 24]
+        steps:
+            - uses: actions/checkout@v7
+            - uses: ./.github/actions/setup
+              with:
+                  node-version: ${{ matrix.node }}
+            - run: pnpm test
+
+    bun:
+        name: Bun
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
+            - uses: ./.github/actions/setup
+            - uses: oven-sh/setup-bun@v2
+            - run: bun --bun vitest run --project unit
+
+    deno:
+        name: Deno
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
+            - uses: ./.github/actions/setup
+            - uses: denoland/setup-deno@v2
+              with:
+                  deno-version: v2.x
+            - run: deno run -A node_modules/vitest/vitest.mjs run --project unit
+
+    browser:
+        name: Browser ${{ matrix.browser }}
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                browser: [chromium, firefox, webkit]
+        steps:
+            - uses: actions/checkout@v7
+            - uses: ./.github/actions/setup
+            - run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
+            - run: pnpm vitest run --project "browser (${{ matrix.browser }})"
+
+    types:
+        name: Published types, TypeScript ${{ matrix.typescript }}
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                typescript: ['5.6', '5.9', '6.0']
+        steps:
+            - uses: actions/checkout@v7
+            - uses: ./.github/actions/setup
+            - run: pnpm build
+            - run: pnpm test:types
+              env:
+                  OVOO_TS: ${{ matrix.typescript }}

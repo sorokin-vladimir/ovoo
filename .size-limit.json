@@ -1,0 +1,25 @@
+[
+	{
+		"name": "@ovoo/core",
+		"path": "packages/core/dist/index.js",
+		"import": "*",
+		"gzip": true,
+		"limit": "4 kB"
+	},
+	{
+		"name": "@ovoo/navigation",
+		"path": "packages/navigation/dist/index.js",
+		"import": "*",
+		"ignore": ["@ovoo/core"],
+		"gzip": true,
+		"limit": "2 kB"
+	},
+	{
+		"name": "@ovoo/react",
+		"path": "packages/react/dist/index.js",
+		"import": "*",
+		"ignore": ["@ovoo/core", "@ovoo/navigation", "react"],
+		"gzip": true,
+		"limit": "3 kB"
+	}
+]
