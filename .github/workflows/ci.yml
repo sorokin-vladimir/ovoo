@@ -23,7 +23,13 @@ jobs:
             - run: pnpm lint
             - run: pnpm typecheck
             - run: pnpm build
-            - run: pnpm size
+            - name: Size
+              # Write the table to the job summary even when a budget is exceeded, then fail
+              run: |
+                  status=0
+                  pnpm exec size-limit --json > "$RUNNER_TEMP/size.json" || status=$?
+                  node scripts/size-summary.ts "$RUNNER_TEMP/size.json" | tee -a "$GITHUB_STEP_SUMMARY"
+                  exit "$status"
 
     node:
         name: Node ${{ matrix.node }}

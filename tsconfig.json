@@ -4,5 +4,5 @@
 		"isolatedDeclarations": false,
 		"types": ["node"]
 	},
-	"include": ["*.config.ts", "*.config.base.ts", "packages/*/*.config.ts"]
+	"include": ["*.config.ts", "*.config.base.ts", "packages/*/*.config.ts", "scripts"]
 }
