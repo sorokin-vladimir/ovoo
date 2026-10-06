@@ -1,0 +1,150 @@
+import { type Segment, parsePathPattern } from './path-pattern.ts';
+
+export interface PatternMatch {
+	readonly pattern: string;
+	readonly params: Readonly<Record<string, string>>;
+}
+
+export interface PatternSet {
+	match(path: string): PatternMatch | undefined;
+}
+
+// One concrete shape of a pattern: every optional group either taken or omitted.
+interface Variant {
+	readonly source: string;
+	// Position of the source in the list, so identical sources still count as two patterns.
+	readonly index: number;
+	readonly segments: readonly VariantSegment[];
+	// Number of optional groups left out of this variant.
+	readonly omitted: number;
+}
+
+type VariantSegment = Segment & { readonly optional: boolean };
+
+export class PathPatternConflictError extends Error {
+	override readonly name = 'PathPatternConflictError';
+	readonly patterns: readonly [string, string];
+
+	constructor(message: string, first: string, second: string) {
+		super(message);
+		this.patterns = [first, second];
+	}
+}
+
+export function createPatternSet(sources: readonly string[]): PatternSet {
+	const variants = sources.flatMap(expand).toSorted(bySpecificity);
+	assertNoConflicts(variants);
+	return {
+		match(path) {
+			const segments = path === '/' ? [] : path.split('/').slice(1);
+			for (const variant of variants) {
+				const params = matchVariant(variant, segments);
+				if (params) return { pattern: variant.source, params };
+			}
+			return undefined;
+		},
+	};
+}
+
+function expand(source: string, index: number): Variant[] {
+	let variants: Variant[] = [{ source, index, segments: [], omitted: 0 }];
+	for (const part of parsePathPattern(source).parts) {
+		if (part.kind === 'optional') {
+			const taken = part.segments.map((segment) => ({ ...segment, optional: true }));
+			variants = variants.flatMap((variant) => [
+				{ ...variant, omitted: variant.omitted + 1 },
+				{ ...variant, segments: [...variant.segments, ...taken] },
+			]);
+		} else {
+			const segment = { ...part, optional: false };
+			variants = variants.map((variant) => ({
+				...variant,
+				segments: [...variant.segments, segment],
+			}));
+		}
+	}
+	return variants;
+}
+
+const kindRank = { static: 3, param: 2, wildcard: 1 } as const;
+
+// Kind decides first; between equal kinds a required segment beats an optional one.
+function rank(segment: VariantSegment): number {
+	return kindRank[segment.kind] * 2 + (segment.optional ? 0 : 1);
+}
+
+// Most specific first: the first segment that differs in rank decides.
+function bySpecificity(a: Variant, b: Variant): number {
+	const length = Math.min(a.segments.length, b.segments.length);
+	for (let i = 0; i < length; i++) {
+		const left = a.segments[i];
+		const right = b.segments[i];
+		if (left && right) {
+			const diff = rank(right) - rank(left);
+			if (diff !== 0) return diff;
+		}
+	}
+	// Variants of different lengths never match the same URL (a wildcard always differs in
+	// rank first), so any fixed rule works here; it keeps the comparator transitive.
+	if (a.segments.length !== b.segments.length) return b.segments.length - a.segments.length;
+	return a.omitted - b.omitted;
+}
+
+// Variants with the same key rank equally and accept exactly the same URLs.
+function conflictKey(variant: Variant): string {
+	const segments = variant.segments.map(
+		(segment) => `${rank(segment)}${segment.kind === 'static' ? `:${segment.value}` : ''}`,
+	);
+	return `${segments.join('/')}|${variant.omitted}`;
+}
+
+function assertNoConflicts(variants: readonly Variant[]): void {
+	const seen = new Map<string, Variant>();
+	for (const variant of variants) {
+		const key = conflictKey(variant);
+		const other = seen.get(key);
+		if (other !== undefined) {
+			throw new PathPatternConflictError(
+				conflictMessage(other, variant),
+				other.source,
+				variant.source,
+			);
+		}
+		seen.set(key, variant);
+	}
+}
+
+function conflictMessage(first: Variant, second: Variant): string {
+	if (first.index === second.index) {
+		return `Path pattern "${first.source}" is ambiguous: its optional groups can match the same URL in more than one way`;
+	}
+	if (first.source === second.source) {
+		return `Path pattern "${first.source}" is declared twice`;
+	}
+	return `Path patterns "${first.source}" and "${second.source}" are equally specific and match the same URLs`;
+}
+
+function matchVariant(
+	variant: Variant,
+	segments: readonly string[],
+): Record<string, string> | undefined {
+	const wildcard = variant.segments.at(-1)?.kind === 'wildcard';
+	if (
+		wildcard
+			? segments.length < variant.segments.length
+			: segments.length !== variant.segments.length
+	) {
+		return undefined;
+	}
+	const params: Record<string, string> = {};
+	for (const [i, part] of variant.segments.entries()) {
+		if (part.kind === 'wildcard') {
+			params['*'] = segments.slice(i).join('/');
+			break;
+		}
+		const segment = segments[i] ?? '';
+		if (part.kind === 'static' && part.value !== segment) return undefined;
+		if (part.kind === 'param') params[part.name] = segment;
+	}
+	return params;
+}
