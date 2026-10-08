@@ -40,6 +40,8 @@ export interface CompiledRoutes {
 	readonly leaves: readonly CompiledLeaf[];
 	// Matches URLs against the leaves' full patterns
 	readonly patternSet: PatternSet;
+	// Route chain of every leaf by its full pattern, which is unique in a router
+	readonly chains: ReadonlyMap<string, readonly Route[]>;
 }
 
 export type RouterOptions = PatternSetOptions;
@@ -107,7 +109,7 @@ export interface Router<Routes extends readonly Route[] = readonly Route[]> {
 }
 
 // Compiled trees live outside the router object, so it stays an opaque handle;
-// match, resolve and href will read them from here
+// match, resolve and href read them through compiledRoutesOf
 const compiledRouters = new WeakMap<Router, CompiledRoutes>();
 
 export function createRouter<const Routes extends readonly Route[]>(
@@ -117,6 +119,13 @@ export function createRouter<const Routes extends readonly Route[]>(
 	const router: Router<Routes> = Object.freeze({});
 	compiledRouters.set(router, compileRoutes(routes, options));
 	return router;
+}
+
+// Internal: what match, resolve and href work from
+export function compiledRoutesOf(router: Router): CompiledRoutes {
+	const compiled = compiledRouters.get(router);
+	if (compiled === undefined) throw new TypeError('Expected a router made by createRouter');
+	return compiled;
 }
 
 // Prefixes an error with where in the tree it happened, keeping the original as the cause
@@ -165,5 +174,9 @@ export function compileRoutes(
 		// Each route constrains only its own params, so the chain's constraints never overlap
 		params: Object.fromEntries(chain.flatMap((node) => Object.entries(node.params ?? {}))),
 	}));
-	return { leaves, patternSet: createPatternSet(entries, options) };
+	return {
+		leaves,
+		patternSet: createPatternSet(entries, options),
+		chains: new Map(leaves.map((leaf) => [leaf.fullPattern, leaf.chain])),
+	};
 }

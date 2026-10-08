@@ -7,6 +7,13 @@
 		"limit": "4 kB"
 	},
 	{
+		"name": "@ovoo/core { createRouter, match }",
+		"path": "packages/core/dist/index.js",
+		"import": "{ createRouter, match }",
+		"gzip": true,
+		"limit": "4 kB"
+	},
+	{
 		"name": "@ovoo/navigation",
 		"path": "packages/navigation/dist/index.js",
 		"import": "*",
