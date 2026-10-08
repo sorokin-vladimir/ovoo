@@ -1,7 +1,11 @@
 export { int, oneOf, uuid } from './param-constraints.ts';
 export type { PathParamNames, PathParams } from './path-params.ts';
 export { match } from './match.ts';
-export type { Match, MatchOf, UrlLike } from './match.ts';
+export type { Match, MatchOf, UrlLike, UrlParts } from './match.ts';
+export { notFound, redirect } from './outcome.ts';
+export type { NotFound, Ok, Outcome, OutcomeOf, Redirect, RedirectOptions } from './outcome.ts';
+export { resolve } from './resolve.ts';
+export type { ResolutionInput, ResolutionStrategy, ResolveOptions } from './resolve.ts';
 export { createRouter, route } from './router.ts';
 export type { FullPathPattern, Route, RouteParams, Router, RouterOptions } from './router.ts';
 export type { StandardSchemaV1 } from './standard-schema.ts';

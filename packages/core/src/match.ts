@@ -1,4 +1,6 @@
+import type { PatternMatch } from './pattern-set.ts';
 import {
+	type CompiledRoutes,
 	type FullPathPattern,
 	type Route,
 	type RouteParams,
@@ -28,27 +30,48 @@ export type MatchOf<R extends Router> =
 // A URL object from any runtime; only the path takes part in matching
 export interface UrlLike {
 	readonly pathname: string;
+	readonly search?: string;
+	readonly hash?: string;
+}
+
+export interface UrlParts {
+	readonly pathname: string;
+	readonly search: string;
+	readonly hash: string;
 }
 
 export function match<R extends Router>(router: R, url: string | UrlLike): MatchOf<R> | null;
 export function match(router: Router, url: string | UrlLike): Match | null {
 	const { patternSet, chains } = compiledRoutesOf(router);
-	const found = patternSet.match(pathOf(url));
-	if (!found) return null;
+	const found = patternSet.match(urlParts(url).pathname);
+	return found ? matchOf(found, chains) : null;
+}
+
+// Internal: a pattern set result with the route chain of its leaf
+export function matchOf(found: PatternMatch, chains: CompiledRoutes['chains']): Match {
 	return { pattern: found.pattern, params: found.params, chain: chains.get(found.pattern) ?? [] };
 }
 
-// Scheme and authority of an absolute URL
-const origin = /^[a-z][\d+.a-z-]*:\/\/[^/?#]*/i;
+// Internal: scheme and authority of an absolute URL
+export const origin: RegExp = /^[a-z][\d+.a-z-]*:\/\/[^/?#]*/i;
 
-// Takes the path as written: parsing with URL would normalize it, hiding non-canonical forms
-function pathOf(url: string | UrlLike): string {
-	if (typeof url !== 'string') return url.pathname;
+// Internal: splits a URL as written; parsing with URL would normalize the path,
+// hiding non-canonical forms
+export function urlParts(url: string | UrlLike): UrlParts {
+	if (typeof url !== 'string') {
+		return { pathname: url.pathname, search: url.search ?? '', hash: url.hash ?? '' };
+	}
 	const absolute = origin.test(url);
-	const path = url.replace(origin, '').split(/[?#]/, 1)[0] ?? '';
-	if (absolute && path === '') return '/';
+	const rest = url.replace(origin, '');
+	const hashAt = rest.indexOf('#');
+	const hash = hashAt === -1 ? '' : rest.slice(hashAt);
+	const beforeHash = hashAt === -1 ? rest : rest.slice(0, hashAt);
+	const searchAt = beforeHash.indexOf('?');
+	const search = searchAt === -1 ? '' : beforeHash.slice(searchAt);
+	const path = searchAt === -1 ? beforeHash : beforeHash.slice(0, searchAt);
+	if (absolute && path === '') return { pathname: '/', search, hash };
 	if (!path.startsWith('/')) {
 		throw new TypeError(`Expected a path starting with "/" or an absolute URL, got "${url}"`);
 	}
-	return path;
+	return { pathname: path, search, hash };
 }

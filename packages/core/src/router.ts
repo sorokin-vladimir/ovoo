@@ -6,6 +6,7 @@ import {
 } from './pattern-set.ts';
 import type { PathParamNames, PathParams } from './path-params.ts';
 import { parsePathPattern } from './path-pattern.ts';
+import type { ResolutionStrategy } from './resolve.ts';
 
 export interface Route {
 	readonly path: string;
@@ -42,9 +43,13 @@ export interface CompiledRoutes {
 	readonly patternSet: PatternSet;
 	// Route chain of every leaf by its full pattern, which is unique in a router
 	readonly chains: ReadonlyMap<string, readonly Route[]>;
+	// Only an explicitly passed one; resolve supplies the default
+	readonly strategy?: ResolutionStrategy;
 }
 
-export type RouterOptions = PatternSetOptions;
+export interface RouterOptions extends PatternSetOptions {
+	readonly strategy?: ResolutionStrategy;
+}
 
 // Type-level twin of joinPatterns
 type JoinPatterns<Parent extends string, Child extends string> = Child extends '/'
@@ -117,7 +122,9 @@ export function createRouter<const Routes extends readonly Route[]>(
 	options: RouterOptions = {},
 ): Router<Routes> {
 	const router: Router<Routes> = Object.freeze({});
-	compiledRouters.set(router, compileRoutes(routes, options));
+	const { strategy, ...patternSetOptions } = options;
+	const compiled = compileRoutes(routes, patternSetOptions);
+	compiledRouters.set(router, strategy === undefined ? compiled : { ...compiled, strategy });
 	return router;
 }
 
