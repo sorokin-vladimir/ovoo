@@ -2,7 +2,7 @@
 
 A type-safe isomorphic router. One route tree serves the server and the browser: a URL resolves to whatever the application needs, be it a component, data or a redirect.
 
-> Early development, not published to npm yet. Path patterns work as described below. The router itself (`route`, `createRouter`, `match`), data loading and the React bindings are being built, so the "Why" section describes the design rather than shipped code.
+> Early development, not published to npm yet. Route trees and path patterns work as described below. Matching a URL against a router (`match`), URL generation, data loading and the React bindings are being built, so parts of the "Why" section describe the design rather than shipped code.
 
 ## Why
 
@@ -23,6 +23,47 @@ ovoo has no built-in data cache, so it sits next to TanStack Query or SWR withou
 | `@ovoo/react`      | React bindings with SSR support.                                           |
 
 All packages are ESM only.
+
+## Route tree
+
+A route's path is relative to its parent: a child path starts with a slash and is appended to the parent's, so `/users` and `/:id` give `/users/:id`. A path of `/` adds no segments. That one rule gives you both an index page and a route that only groups its children, for example under a shared guard or layout. Only leaf routes match a URL, so a parent that needs a page of its own gets a `/` child.
+
+```ts
+import { createRouter, int, route, type FullPathPattern, type RouteParams } from '@ovoo/core';
+
+const user = route({
+	path: '/:id',
+	params: { id: int },
+	children: [route({ path: '/' }), route({ path: '/edit' })],
+});
+
+const router = createRouter([
+	route({
+		path: '/',
+		children: [
+			route({ path: '/' }),
+			route({ path: '/users', children: [route({ path: '/' }), user] }),
+		],
+	}),
+]);
+
+type Pattern = FullPathPattern<typeof router>;
+// '/' | '/users' | '/users/:id' | '/users/:id/edit'
+
+type EditParams = RouteParams<typeof router, '/users/:id/edit'>;
+// { id: number }
+```
+
+A route constrains only the params of its own path, and the constraints of the whole chain apply to every leaf below it. The router never writes into route objects, so you can freeze them, share them between routers and mount one subtree in several places.
+
+`createRouter` checks the whole tree when it is created: malformed patterns, constraints on names the path does not have, and conflicting routes. Errors say where in the tree the problem is:
+
+```
+In route "/users/:id" > "/:id": Duplicate path param "id"
+
+    /users/:id/:id
+               ^
+```
 
 ## Path patterns
 
