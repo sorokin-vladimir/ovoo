@@ -1,35 +1,8 @@
-import {
-	type ParamConstraints,
-	type PatternSet,
-	type PatternSetOptions,
-	createPatternSet,
-} from './pattern-set.ts';
-import type { PathParamNames, PathParams } from './path-params.ts';
+import { type PatternSet, type PatternSetOptions, createPatternSet } from './pattern-set.ts';
+import type { PathParams } from './path-params.ts';
 import { parsePathPattern } from './path-pattern.ts';
 import type { ResolutionStrategy } from './resolve.ts';
-
-export interface Route {
-	readonly path: string;
-	readonly params?: ParamConstraints;
-	readonly children?: readonly Route[];
-}
-
-// Turns a constraint on a name the route's own path lacks into a type error
-type OwnParamsOnly<R extends Route> = R extends {
-	readonly path: infer Path extends string;
-	readonly params: infer Params;
-}
-	? {
-			readonly params: {
-				[Name in keyof Params]: Name extends PathParamNames<Path> ? Params[Name] : never;
-			};
-		}
-	: unknown;
-
-// Identity at runtime; exists so the literal path and children keep their types
-export function route<const R extends Route>(definition: R & OwnParamsOnly<R>): R {
-	return definition;
-}
+import type { CheckedRoutes, ResultOfRoutes, RootContext, Route } from './route.ts';
 
 export interface CompiledLeaf {
 	readonly fullPattern: string;
@@ -113,12 +86,20 @@ export interface Router<Routes extends readonly Route[] = readonly Route[]> {
 	readonly [routeTree]?: Routes;
 }
 
+// The context resolve has to be given for the router
+export type RouterContext<R extends Router> =
+	R extends Router<infer Routes> ? RootContext<Routes> : unknown;
+
+// What an ok resolution of the router carries: the union of its root routes' results
+export type RouterResult<R extends Router> =
+	R extends Router<infer Routes> ? ResultOfRoutes<Routes> : unknown;
+
 // Compiled trees live outside the router object, so it stays an opaque handle;
 // match, resolve and href read them through compiledRoutesOf
 const compiledRouters = new WeakMap<Router, CompiledRoutes>();
 
 export function createRouter<const Routes extends readonly Route[]>(
-	routes: Routes,
+	routes: Routes & NoInfer<CheckedRoutes<Routes>>,
 	options: RouterOptions = {},
 ): Router<Routes> {
 	const router: Router<Routes> = Object.freeze({});

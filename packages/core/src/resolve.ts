@@ -1,6 +1,8 @@
+import { loaders } from './loaders.ts';
 import { type Match, type UrlLike, type UrlParts, matchOf, urlParts } from './match.ts';
 import { type Outcome, type OutcomeOf, isOutcome, notFound, redirect } from './outcome.ts';
-import { type Route, type Router, compiledRoutesOf } from './router.ts';
+import type { Route } from './route.ts';
+import { type Router, type RouterContext, compiledRoutesOf } from './router.ts';
 
 export interface ResolutionInput {
 	readonly match: Match;
@@ -28,24 +30,30 @@ type AbortSignalType = typeof globalThis extends { AbortSignal: { prototype: inf
 	? Signal
 	: SignalLike;
 
-export interface ResolveOptions {
+export interface ResolveOptions<Context = unknown> {
 	// Passed to the strategy as is
-	readonly context?: unknown;
+	readonly context?: Context;
 	// Aborting it rejects resolve with the signal's reason
 	readonly signal?: AbortSignalType;
 }
 
+// Options become required once the routes expect context keys no guard provides
+type ResolveArguments<R extends Router> =
+	{} extends RouterContext<R>
+		? [options?: ResolveOptions<RouterContext<R>>]
+		: [options: ResolveOptions<RouterContext<R>> & { readonly context: RouterContext<R> }];
+
 export function resolve<R extends Router>(
 	router: R,
 	url: string | UrlLike,
-	options?: ResolveOptions,
+	...options: ResolveArguments<R>
 ): Promise<OutcomeOf<R>>;
 export async function resolve(
 	router: Router,
 	url: string | UrlLike,
 	options: ResolveOptions = {},
 ): Promise<Outcome> {
-	const { patternSet, chains, strategy } = compiledRoutesOf(router);
+	const { patternSet, chains, strategy = loaders } = compiledRoutesOf(router);
 	const { signal } = options;
 	signal?.throwIfAborted();
 	const parts = urlParts(url);
@@ -56,8 +64,6 @@ export async function resolve(
 		return redirect(found.redirect + search + hash, { permanent: true });
 	}
 	const matched = matchOf(found, chains);
-	// Until the default strategy exists
-	if (strategy === undefined) throw new TypeError('Expected a router created with a strategy');
 	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
 	const runtime = globalThis as unknown as AbortRuntime;
 	// Aborted once resolve settles, so steps still running in parallel stop

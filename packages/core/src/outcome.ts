@@ -1,5 +1,5 @@
 import { type Match, type MatchOf, origin } from './match.ts';
-import type { Router } from './router.ts';
+import type { Router, RouterResult } from './router.ts';
 
 export interface Ok {
 	readonly type: 'ok';
@@ -21,7 +21,7 @@ export type Outcome = Ok | Redirect | NotFound;
 
 // Outcome of one router; checking the match's pattern narrows its params
 export type OutcomeOf<R extends Router> =
-	| { readonly type: 'ok'; readonly value: unknown; readonly match: MatchOf<R> }
+	| { readonly type: 'ok'; readonly value: RouterResult<R>; readonly match: MatchOf<R> }
 	| Redirect
 	| NotFound;
 

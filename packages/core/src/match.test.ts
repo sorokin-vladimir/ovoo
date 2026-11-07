@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { match } from './match.ts';
 import { int } from './param-constraints.ts';
-import { createRouter, route } from './router.ts';
+import { route } from './route.ts';
+import { createRouter } from './router.ts';
 
 const user = route({ path: '/:id', params: { id: int } });
 const userList = route({ path: '/' });

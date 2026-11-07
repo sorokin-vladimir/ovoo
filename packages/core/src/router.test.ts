@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { int, oneOf } from './param-constraints.ts';
 import { PathPatternConflictError } from './pattern-set.ts';
-import { type Route, compileRoutes, createRouter, route } from './router.ts';
+import { type Route, route } from './route.ts';
+import { compileRoutes, createRouter } from './router.ts';
 
 function compileError(routes: readonly Route[]): Error {
 	try {

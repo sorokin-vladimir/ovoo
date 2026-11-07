@@ -2,7 +2,8 @@ import { describe, expect, test } from 'vitest';
 import { notFound, redirect } from './outcome.ts';
 import { int } from './param-constraints.ts';
 import { type ResolveOptions, resolve } from './resolve.ts';
-import { createRouter, route } from './router.ts';
+import { route } from './route.ts';
+import { createRouter } from './router.ts';
 
 // The core lib has no DOM types; every supported runtime has AbortController at run time
 type AbortControllerConstructor = new () => {
@@ -85,12 +86,6 @@ describe('resolve', () => {
 			},
 		});
 		await expect(resolve(router, '/users/42')).rejects.toBe(failure);
-	});
-
-	test('a router without a strategy is a usage error for now', async () => {
-		await expect(resolve(createRouter([users]), '/users/42')).rejects.toThrow(
-			new TypeError('Expected a router created with a strategy'),
-		);
 	});
 
 	test('the strategy gets the match, the route chain, the URL parts and the context', async () => {

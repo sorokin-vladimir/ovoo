@@ -1,8 +1,8 @@
 import type { PatternMatch } from './pattern-set.ts';
+import type { Route } from './route.ts';
 import {
 	type CompiledRoutes,
 	type FullPathPattern,
-	type Route,
 	type RouteParams,
 	type Router,
 	compiledRoutesOf,
